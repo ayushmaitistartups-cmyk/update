@@ -95,12 +95,11 @@ flowchart LR
         SIM --> LIBAPI
     end
 
-    subgraph EXT["External services"]
-        GEM["Google Gemini API<br/>multimodal LLM"]
-        CLERK["Clerk<br/>human identity"]
-        REDIS["Redis<br/>hot memory + revocation pub/sub"]
-        SUPA["Supabase Postgres<br/>devices, sessions, turns,<br/>user_memory, user_profiles"]
-    end
+    %% External services — free-standing so each sits near its callers
+    GEM(["Google Gemini API<br/>multimodal LLM"])
+    CLERK(["Clerk<br/>human identity"])
+    REDIS[("Redis<br/>hot memory +<br/>revocation pub/sub")]
+    SUPA[("Supabase Postgres<br/>devices, sessions, turns,<br/>user_memory, user_profiles")]
 
     NETWS -->|"UPLINK — wss /lamp/ws<br/>auth: device_jwt"| WSL
     SESS -->|"DOWNLINK — answer frames<br/>on the same WebSocket"| NETWS
