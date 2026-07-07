@@ -1,5 +1,7 @@
 # Architecture Diagram — Lumos Smart Tutor Lamp
 
+System-level architecture across the three repos in this workspace:
+
 | Tier | Repo / path | Stack |
 |---|---|---|
 | Device firmware | `Smart-Tutor-Lamp/tutor_lamp/` | ESP32-S3, Arduino, FreeRTOS |
@@ -8,162 +10,191 @@
 
 ---
 
-## 1. Big picture
+## 1. System overview
 
 ```mermaid
 flowchart LR
-    CHILD(["Child"])
-    PARENT(["Parent"])
-    LAMP["Smart Tutor Lamp<br/>(ESP32-S3)"]
-    BE["Backend<br/>(FastAPI)"]
-    FE["Web App<br/>(Next.js)"]
-    GEM["Gemini LLM"]
-    MEM[("Redis + Supabase<br/>memory & data")]
-    CLERK["Clerk<br/>login"]
 
-    CHILD -->|"hey Lumos + question"| LAMP
-    LAMP -->|"voice + photo"| BE
-    BE -->|"spoken answer + visuals"| LAMP
-    LAMP -->|"speaks & shows"| CHILD
-    BE -->|"thinks with"| GEM
-    BE -->|"remembers in"| MEM
-    PARENT -->|"signs in"| FE
-    FE -->|"dashboard, pairing,<br/>web simulator"| BE
-    FE --- CLERK
+    subgraph LAMP["ESP32-S3 Lamp — tutor_lamp firmware"]
+        MIC["INMP441 mic<br/>I2S RX 16 kHz"]
+        DSP["DSP chain<br/>NS → ALE → AGC → VAD"]
+        WAKE["Edge Impulse wake word<br/>hey Lumos"]
+        CAM["OV5640 camera<br/>SVGA JPEG 25–40 KB"]
+        TFTUI["tft_ui — 240×320 TFT<br/>pages, LaTeX frames, QR"]
+        SPK["MAX98357A speaker<br/>24 kHz PCM, half-duplex I2S"]
+        NETWS["net_ws — persistent WSS client<br/>type-byte binary protocol, ≤4 KB msgs"]
+        PROV["provisioning<br/>device_jwt in NVS"]
+
+        MIC --> DSP
+        DSP --> WAKE
+        WAKE -->|"trigger record"| DSP
+        DSP -->|"cleaned 16 kHz mic audio<br/>AUDIO_CHUNK — PCM or ADPCM 4:1"| NETWS
+        CAM -->|"JPEG in ≤1 KB chunks<br/>IMAGE_PART ×N + IMAGE_JPEG"| NETWS
+        NETWS -->|"TTS audio — AUDIO_OUT<br/>Opus / ADPCM / PCM<br/>+ AUDIO_OUT_END"| SPK
+        NETWS -->|"STATE byte → page + LED<br/>LaTeX / text / graph /<br/>chem / doc frames"| TFTUI
+        TFTUI -->|"GRAPH_VIEW<br/>pan-zoom viewport"| NETWS
+        PROV -->|"pairing QR"| TFTUI
+        BTN["Buttons + RGB LED<br/>cancel turn, scroll pages,<br/>pan / zoom graphs"]
+        BTN -->|"CANCEL frame"| NETWS
+        BTN -->|"page scroll"| TFTUI
+    end
+
+    subgraph BE["FastAPI Backend — app/"]
+        WSL["routes/ws_lamp.py<br/>WS endpoint /lamp/ws"]
+        SESS["session.py<br/>audio + image accumulators,<br/>paced chunk senders"]
+
+        PRER["1 — escalation_router<br/>image-quality retake check,<br/>deterministic starting tier"]
+        GUARD["2 — input_guard<br/>distress / harm /<br/>prompt-injection screen"]
+        ORCH["3 — orchestrator — TurnOrchestrator<br/>+ problem_memo (solve once, tutor many)<br/>+ session memory into prompt<br/>+ 2-tier escalation"]
+        LLMP["4 — providers/llm_* (Gemini default)<br/>audio + image + prompt → JSON"]
+        MATHV["5 — math_verifier<br/>recompute answer (numpy),<br/>balance chemistry"]
+        OUTV["6 — output_validator + render_check<br/>PASS / REPAIR / REPLACE gate"]
+        DISP["7 — dispatch<br/>audio leg + display legs<br/>run concurrently (asyncio.gather)"]
+
+        PRER --> GUARD
+        GUARD --> ORCH
+        ORCH --> LLMP
+        LLMP --> MATHV
+        MATHV --> OUTV
+        OUTV --> DISP
+
+        MEMS["services/session_memory.py<br/>L1 recent / L2 summary / L3 profile"]
+        TTSP["tts_piper<br/>speech → 24 kHz PCM"]
+        LTX["latex_renderer<br/>LaTeX → RGB565 frames"]
+        GRPH["graph_renderer<br/>function plots → JPEG"]
+        CHEM["rdkit_renderer<br/>molecule steps → JPEG"]
+        DOCP["document composer<br/>scroll-doc manifest + blocks"]
+        TRACE["turn_trace — passive observer<br/>→ turn_traces (admin pipeline audit)"]
+        WORKERS["offline workers (never on live path)<br/>topic_tagger, mistake_tagger,<br/>transcribe, embed, rollup"]
+        HTTPR["HTTP routes<br/>device_*, pairing_info, ota,<br/>frontend_manager, admin, pilot, insights"]
+        AUTHD["deps/clerk + device_jwt<br/>token verification"]
+
+        WSL --> SESS
+        SESS -->|"complete turn:<br/>WAV + JPEG"| PRER
+        ORCH <-->|"load_context / record_turn"| MEMS
+        DISP --> TTSP
+        DISP --> LTX
+        DISP --> GRPH
+        DISP --> CHEM
+        DISP --> DOCP
+        DISP -->|"stream frames"| SESS
+        SESS -->|"GRAPH_VIEW → re-render<br/>cached graph spec, no LLM"| GRPH
+        ORCH -.->|"every pipeline phase timed"| TRACE
+        HTTPR --> AUTHD
+        AUTHD -.->|"gates /lamp/ws"| WSL
+    end
+
+    subgraph FE["Next.js Frontend"]
+        PAGES["dashboard / devices /<br/>analytics / admin"]
+        CONNECT["connect page — QR scanner<br/>→ pair confirm"]
+        SIM["simulator — web bench<br/>mic + webcam, same brain"]
+        LIBAPI["lib/api.ts<br/>Clerk-Bearer fetch"]
+
+        PAGES --> LIBAPI
+        CONNECT --> LIBAPI
+        SIM --> LIBAPI
+    end
+
+    subgraph EXT["External services"]
+        GEM["Google Gemini API<br/>multimodal LLM"]
+        CLERK["Clerk<br/>human identity"]
+        REDIS["Redis<br/>hot memory + revocation pub/sub"]
+        SUPA["Supabase Postgres<br/>devices, sessions, turns,<br/>user_memory, user_profiles"]
+    end
+
+    NETWS -->|"UPLINK — wss /lamp/ws<br/>auth: device_jwt<br/>audio / image / cancel frames"| WSL
+    SESS -->|"DOWNLINK — same WebSocket<br/>STATE / TTS audio / TFT frames<br/>back to the lamp"| NETWS
+    PROV -->|"HTTPS register /<br/>poll-pairing / OTA poll +<br/>firmware self-flash"| HTTPR
+    LIBAPI -->|"HTTPS /api/*<br/>Clerk Bearer token"| HTTPR
+    PAGES -->|"sign-in / sessions"| CLERK
+    CLERK -->|"user.deleted webhook"| HTTPR
+    LLMP --> GEM
+    MEMS --> REDIS
+    MEMS --> SUPA
+    TRACE --> SUPA
+    WORKERS --> SUPA
+    WORKERS -.->|"cheap tagging calls"| GEM
+    HTTPR --> SUPA
+    AUTHD -->|"verify Clerk JWT"| CLERK
 ```
 
-- The **lamp never talks to Clerk** — it authenticates to the backend with its own
-  `device_jwt`. Clerk only handles humans on the web app.
-- The web app's **simulator** page uses the exact same backend brain as the lamp.
+**Key rule shown above:** the lamp never talks to Clerk — it only sees the backend's
+HTTPS + WSS endpoints and authenticates with the backend-minted `device_jwt`. All
+human identity lives in Clerk and is verified server-side.
 
 ---
 
-## 2. Inside the lamp (firmware)
-
-```mermaid
-flowchart LR
-    MIC["Mic"] --> DSP["Noise cleanup<br/>(DSP chain)"]
-    DSP --> WAKE["Wake word<br/>'hey Lumos'"]
-    DSP -->|"question audio"| WS["net_ws<br/>WebSocket link"]
-    CAM["Camera"] -->|"photo"| WS
-    BTN["Buttons"] -->|"cancel / graph zoom"| WS
-    WS -->|"voice"| SPK["Speaker"]
-    WS -->|"visuals + state"| TFT["Screen<br/>(240×320 TFT)"]
-    PAIR["Pairing + OTA<br/>(device_jwt in NVS)"] -->|"QR code"| TFT
-```
-
-Details that matter (in code, not on the arrows):
-
-- **DSP chain** = noise suppression → adaptive filter → gain control → voice
-  detection (`NS → ALE → AGC → VAD`); wake word runs on-device (Edge Impulse).
-- **One WebSocket** carries everything, every message ≤ 4 KB; big payloads
-  (photos up, screen frames down) are cut into chunks. Mic audio can be
-  ADPCM-compressed; up to 5 photos per turn.
-- **Speaker and mic share one I2S bus** (half-duplex): while the lamp speaks the
-  mic is off; `AUDIO_OUT_END` hands the bus back and the wake word re-arms.
-- **Buttons**: cancel a turn, scroll answer pages, pan/zoom graphs (`GRAPH_VIEW`
-  asks the backend to re-render — no LLM call).
-- **Pairing + OTA** run over HTTPS: register → QR on screen → poll for
-  `device_jwt`; at boot the lamp polls `/lamp/ota/version` and self-flashes
-  newer firmware.
-
----
-
-## 3. Inside the backend (one tutoring turn)
-
-```mermaid
-flowchart LR
-    IN["Turn arrives<br/>audio + photos"] --> S1["1 pre-check<br/>photo quality,<br/>pick model tier"]
-    S1 --> S2["2 safety screen<br/>distress / harm /<br/>injection"]
-    S2 --> S3["3 orchestrator<br/>+ memory + memo"]
-    S3 --> S4["4 LLM call<br/>(Gemini)"]
-    S4 --> S5["5 math recheck<br/>(numpy)"]
-    S5 --> S6["6 output gate<br/>repair / replace"]
-    S6 --> S7["7 dispatch"]
-    S7 -->|"voice"| TTS["Piper TTS"]
-    S7 -->|"visuals"| REN["renderers<br/>LaTeX / graph /<br/>chem / document"]
-    TTS --> OUT["back to the lamp<br/>same WebSocket,<br/>voice + visuals in parallel"]
-    REN --> OUT
-    DB[("memory<br/>Redis + Supabase")] --- S3
-```
-
-Code map: `routes/ws_lamp.py` receives frames → `session.py` buffers the turn →
-`services/orchestrator.py` runs steps 1–7 (`escalation_router`, `input_guard`,
-`problem_memo`, `session_memory`, `llm_*`, `math_verifier`,
-`output_validator`, `dispatch`) → providers render (`tts_piper`,
-`latex_renderer`, `graph_renderer`, `rdkit_renderer`, `document`).
-
-Also in the backend (off the live path):
-
-- **Memory** — L1 recent turns (Redis, Supabase fallback), L2 session summary,
-  L3 cross-session learner profile (`session_memory.py`).
-- **Escalation** — low confidence / hard question triggers a tier-2 re-call.
-- **turn_trace** — passively records every step of every turn for the admin
-  "pipeline audit" view; can never slow a turn.
-- **Offline workers** — topic tagging, mistake tagging, transcription,
-  embeddings, analytics rollups.
-- **HTTP routes** — device pairing, OTA, frontend/dashboard APIs, admin, pilot,
-  insights, Clerk webhook (user deleted → device unlinked via Redis pub/sub).
-
----
-
-## 4. One tutoring turn, step by step
+## 2. Tutoring turn — end-to-end data flow
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant C as Child
-    participant L as Lamp
-    participant B as Backend
+    participant L as ESP32-S3 Lamp
+    participant W as Backend /lamp/ws
+    participant O as TurnOrchestrator
     participant G as Gemini
+    participant P as Piper TTS
 
     C->>L: "Hey Lumos" + question
-    L->>L: wake word → record until silence
-    L->>B: question audio + photo (chunked)
-    B-->>L: STATE thinking → spinner on screen
-    B->>B: pre-check photo, safety screen,<br/>load memory + problem memo
-    B->>G: prompt + audio + photo
-    G-->>B: JSON answer (speech + visuals)
-    B->>B: math recheck, output gate<br/>(escalate to tier 2 if weak)
-    par voice
-        B-->>L: TTS audio chunks
-    and visuals
-        B-->>L: equations / graphs / molecules
+    L->>L: wake word fires → record until VAD end-of-speech
+    L->>W: AUDIO_CHUNK ×N — PCM or ADPCM, then AUDIO_END<br/>(+ up to 5 images, each IMAGE_PART ×N + IMAGE_JPEG)
+    W-->>L: STATE thinking → spinner page + LED
+    W->>O: run_turn(audio WAV, images)
+    O->>O: pre-route — image-quality check<br/>(blurry / dark → ask to retake, zero LLM spend),<br/>pick starting tier
+    O->>O: input_guard — distress / harm /<br/>prompt-injection screen
+    O->>O: load memory context (Redis L1, Supabase fallback)<br/>+ problem memo (answer key from earlier turns)
+    O->>G: system prompt + history + WAV + JPEG (JSON mode)
+    G-->>O: JSON {speech, display, confidence, analytics}
+    Note over O: low confidence / hard query →<br/>tier-2 re-call (escalation)
+    O->>O: math_verifier — recompute answer<br/>(numpy / atom counts)
+    O->>O: output_validator + render_check —<br/>repair or replace off-contract reply
+    W-->>L: STATE speaking + TFT_LATEX_LOADING<br/>skeleton (when equations are coming)
+    par audio leg
+        O->>P: speech text
+        P-->>W: 24 kHz mono PCM
+        W-->>L: AUDIO_OUT ≤4 KB every 85 ms<br/>(Opus / ADPCM / PCM per config)
+        L->>L: speaker takes I2S from mic (half-duplex)
+        W-->>L: AUDIO_OUT_END — lamp hands I2S<br/>back to the mic, wake word re-arms
+    and display legs
+        O->>W: LaTeX → RGB565 frames,<br/>graphs / molecules / documents → JPEG
+        W-->>L: TFT_PART ×N + graph / chem / doc pages
     end
-    L-->>C: speaks the answer + shows it
-    opt student zooms a graph
-        L->>B: GRAPH_VIEW viewport
-        B-->>L: re-rendered graph (no LLM)
+    L-->>C: spoken answer + equation on TFT
+    opt student pans or zooms a graph
+        L->>W: GRAPH_VIEW — graph id + new viewport
+        W-->>L: re-rendered TFT_GRAPH_JPEG<br/>(cached spec, no LLM call)
     end
-    B->>B: save turn to memory + trace
+    O->>O: record_turn → Redis + Supabase (background)<br/>+ turn_trace saved for admin audit
 ```
 
 ---
 
-## 5. Pairing a new lamp
+## 3. Pairing flow — QR onboarding
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant L as Lamp
     participant B as Backend
-    participant A as Web App
+    participant A as Next.js app
     participant U as Parent
 
-    L->>B: register (device_id + secret)
+    L->>B: POST /api/device/register (device_id + secret)
     B-->>L: pairing code
-    L->>L: shows QR on screen
-    U->>A: signs in (Clerk), scans QR
-    A->>B: complete pairing
-    L->>B: polls pairing status
-    B-->>L: device_jwt (saved in flash)
-    L->>B: opens WebSocket with device_jwt
-    Note over L,B: unpair / account deleted →<br/>backend revokes, WS closes (4402)
+    L->>L: render QR on TFT
+    U->>A: sign in via Clerk, open /connect, scan QR
+    A->>B: POST /api/device/complete-pairing (Clerk Bearer)
+    B->>B: devices.user_id ← parent account
+    L->>B: poll /api/device/poll-pairing
+    B-->>L: device_jwt → stored in NVS
+    L->>B: open wss /lamp/ws with device_jwt
+    Note over L,B: unpair / Clerk user.deleted →<br/>revocation via Redis pub/sub,<br/>WS closed with code 4402
 ```
 
 ---
 
-## 6. Contracts worth remembering
+## 4. Contracts worth remembering
 
 - **Wire protocol:** type-byte-framed binary WebSocket protocol; every message
   ≤ ~4 KB in both directions — large payloads (JPEG up, TFT frames down) are
@@ -175,15 +206,24 @@ sequenceDiagram
 - **Audio out:** 24 kHz mono, ≤4 KB chunks paced at 85 ms — wire codec is Opus
   by default (ADPCM / raw PCM fallbacks); `AUDIO_OUT_END` is mandatory, it
   releases the half-duplex I2S bus back to the mic so the wake word re-arms.
-- **Voice + visuals stream concurrently** (`asyncio.gather`) so speech is never
-  blocked behind a multi-MB equation payload.
 - **Memory:** L1 verbatim recent turns (Redis→Supabase), L2 session-summary
   compaction, L3 cross-session user profile — shared by the lamp and the web simulator.
 - **Ingest gates:** up to 5 images per turn, each capped at 256 KB (an over-cap
   or excess image is dropped but the turn still runs); audio 0.5 s min / 30 s
   max (truncated over cap); a new AUDIO_END cancels and awaits any in-flight turn.
+- **Interactive graphs:** graph specs are cached per session — a lamp GRAPH_VIEW
+  pan/zoom re-renders server-side with zero LLM spend (re-render calls coalesced).
+- **Auth split:** Clerk owns humans (frontend), backend owns devices (`device_jwt`);
+  the ESP32 never sees Clerk.
 - **Safety + quality gates are code, not prompt rules:** `input_guard` screens
-  incoming text, `math_verifier` recomputes arithmetic, `output_validator` +
-  `render_check` repair or replace any off-contract reply before dispatch.
-- **Auth split:** Clerk owns humans (frontend), backend owns devices
-  (`device_jwt`); the ESP32 never sees Clerk.
+  incoming text (distress / harm / injection), `math_verifier` recomputes the
+  model's arithmetic, `output_validator` + `render_check` repair or replace any
+  off-contract reply before dispatch.
+- **Observability:** `turn_trace` passively records every pipeline phase to
+  `turn_traces` (with media in the `/blobs` static mount) for the admin
+  visual-pipeline audit; it can never fail or slow a live turn.
+- **Offline enrichment:** topic tagging, mistake-type tagging, transcription,
+  embedding, and analytics rollups run as background workers — never on the
+  live turn path.
+- **OTA:** the lamp polls `GET /lamp/ota/version` at boot and self-flashes when
+  the backend advertises a newer firmware.
