@@ -102,7 +102,8 @@ flowchart LR
         SUPA["Supabase Postgres<br/>devices, sessions, turns,<br/>user_memory, user_profiles"]
     end
 
-    NETWS <-->|"wss /lamp/ws<br/>auth: device_jwt"| WSL
+    NETWS -->|"UPLINK — wss /lamp/ws<br/>auth: device_jwt<br/>audio / image / cancel frames"| WSL
+    SESS -->|"DOWNLINK — same WebSocket<br/>STATE / TTS audio / TFT frames<br/>back to the lamp"| NETWS
     PROV -->|"HTTPS register /<br/>poll-pairing / OTA poll +<br/>firmware self-flash"| HTTPR
     LIBAPI -->|"HTTPS /api/*<br/>Clerk Bearer token"| HTTPR
     PAGES -->|"sign-in / sessions"| CLERK
