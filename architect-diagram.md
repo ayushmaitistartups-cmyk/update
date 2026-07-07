@@ -16,14 +16,13 @@ System-level architecture across the three repos in this workspace:
 flowchart LR
 
     subgraph LAMP["ESP32-S3 Lamp — tutor_lamp firmware"]
-        direction TB
         MIC["INMP441 mic<br/>I2S RX 16 kHz"]
         DSP["DSP chain<br/>NS → ALE → AGC → VAD"]
         WAKE["Edge Impulse wake word<br/>hey Lumos"]
         CAM["OV5640 camera<br/>SVGA JPEG 25–40 KB"]
         TFTUI["tft_ui — 240×320 TFT<br/>pages, LaTeX frames, QR"]
         SPK["MAX98357A speaker<br/>24 kHz PCM, half-duplex I2S"]
-        NETWS["net_ws — persistent WSS client<br/>11-frame binary protocol, ≤4 KB msgs"]
+        NETWS["net_ws — persistent WSS client<br/>type-byte binary protocol, ≤4 KB msgs"]
         PROV["provisioning<br/>device_jwt in NVS"]
 
         MIC --> DSP
@@ -41,27 +40,23 @@ flowchart LR
     end
 
     subgraph BE["FastAPI Backend — app/"]
-        direction TB
         WSL["routes/ws_lamp.py<br/>WS endpoint /lamp/ws"]
         SESS["session.py<br/>audio + image accumulators,<br/>paced chunk senders"]
 
-        subgraph TURN["live turn pipeline (execution order)"]
-            direction TB
-            PRER["escalation_router<br/>image-quality retake check,<br/>deterministic starting tier"]
-            GUARD["input_guard<br/>distress / harm /<br/>prompt-injection screen"]
-            ORCH["orchestrator — TurnOrchestrator<br/>+ problem_memo (solve once, tutor many)<br/>+ session memory into prompt<br/>+ 2-tier escalation"]
-            LLMP["providers/llm_* (Gemini default)<br/>audio + image + prompt → JSON"]
-            MATHV["math_verifier<br/>recompute answer (numpy),<br/>balance chemistry"]
-            OUTV["output_validator + render_check<br/>PASS / REPAIR / REPLACE gate"]
-            DISP["dispatch<br/>audio leg + display legs<br/>run concurrently (asyncio.gather)"]
+        PRER["1 — escalation_router<br/>image-quality retake check,<br/>deterministic starting tier"]
+        GUARD["2 — input_guard<br/>distress / harm /<br/>prompt-injection screen"]
+        ORCH["3 — orchestrator — TurnOrchestrator<br/>+ problem_memo (solve once, tutor many)<br/>+ session memory into prompt<br/>+ 2-tier escalation"]
+        LLMP["4 — providers/llm_* (Gemini default)<br/>audio + image + prompt → JSON"]
+        MATHV["5 — math_verifier<br/>recompute answer (numpy),<br/>balance chemistry"]
+        OUTV["6 — output_validator + render_check<br/>PASS / REPAIR / REPLACE gate"]
+        DISP["7 — dispatch<br/>audio leg + display legs<br/>run concurrently (asyncio.gather)"]
 
-            PRER --> GUARD
-            GUARD --> ORCH
-            ORCH --> LLMP
-            LLMP --> MATHV
-            MATHV --> OUTV
-            OUTV --> DISP
-        end
+        PRER --> GUARD
+        GUARD --> ORCH
+        ORCH --> LLMP
+        LLMP --> MATHV
+        MATHV --> OUTV
+        OUTV --> DISP
 
         MEMS["services/session_memory.py<br/>L1 recent / L2 summary / L3 profile"]
         TTSP["tts_piper<br/>speech → 24 kHz PCM"]
@@ -84,13 +79,12 @@ flowchart LR
         DISP --> DOCP
         DISP -->|"stream frames"| SESS
         SESS -->|"GRAPH_VIEW → re-render<br/>cached graph spec, no LLM"| GRPH
-        TURN -.->|"every phase timed"| TRACE
+        ORCH -.->|"every pipeline phase timed"| TRACE
         HTTPR --> AUTHD
         AUTHD -.->|"gates /lamp/ws"| WSL
     end
 
     subgraph FE["Next.js Frontend"]
-        direction TB
         PAGES["dashboard / devices /<br/>analytics / admin"]
         CONNECT["connect page — QR scanner<br/>→ pair confirm"]
         SIM["simulator — web bench<br/>mic + webcam, same brain"]
@@ -102,7 +96,6 @@ flowchart LR
     end
 
     subgraph EXT["External services"]
-        direction TB
         GEM["Google Gemini API<br/>multimodal LLM"]
         CLERK["Clerk<br/>human identity"]
         REDIS["Redis<br/>hot memory + revocation pub/sub"]
@@ -112,7 +105,7 @@ flowchart LR
     NETWS <-->|"wss /lamp/ws<br/>auth: device_jwt"| WSL
     PROV -->|"HTTPS register /<br/>poll-pairing / OTA poll +<br/>firmware self-flash"| HTTPR
     LIBAPI -->|"HTTPS /api/*<br/>Clerk Bearer token"| HTTPR
-    FE -->|"sign-in / sessions"| CLERK
+    PAGES -->|"sign-in / sessions"| CLERK
     CLERK -->|"user.deleted webhook"| HTTPR
     LLMP --> GEM
     MEMS --> REDIS
