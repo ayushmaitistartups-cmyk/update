@@ -17,26 +17,26 @@ flowchart LR
 
     subgraph LAMP["ESP32-S3 Lamp — tutor_lamp firmware"]
         MIC["INMP441 mic<br/>I2S RX 16 kHz"]
+        CAM["OV5640 camera<br/>SVGA JPEG 25–40 KB"]
+        BTN["Buttons + RGB LED<br/>cancel turn, scroll pages,<br/>pan / zoom graphs"]
         DSP["DSP chain<br/>NS → ALE → AGC → VAD"]
         WAKE["Edge Impulse wake word<br/>hey Lumos"]
-        CAM["OV5640 camera<br/>SVGA JPEG 25–40 KB"]
-        TFTUI["tft_ui — 240×320 TFT<br/>pages, LaTeX frames, QR"]
-        SPK["MAX98357A speaker<br/>24 kHz PCM, half-duplex I2S"]
-        NETWS["net_ws — persistent WSS client<br/>type-byte binary protocol, ≤4 KB msgs"]
+        NETWS["net_ws — persistent WSS client<br/>type-byte binary protocol, ≤4 KB msgs<br/>up: AUDIO_CHUNK / IMAGE_PART / CANCEL<br/>down: STATE / AUDIO_OUT / TFT frames"]
         PROV["provisioning<br/>device_jwt in NVS"]
+        SPK["MAX98357A speaker<br/>24 kHz PCM, half-duplex I2S"]
+        TFTUI["tft_ui — 240×320 TFT<br/>pages, LaTeX frames, QR"]
 
         MIC --> DSP
         DSP --> WAKE
-        WAKE -->|"trigger record"| DSP
-        DSP -->|"cleaned 16 kHz mic audio<br/>AUDIO_CHUNK — PCM or ADPCM 4:1"| NETWS
-        CAM -->|"JPEG in ≤1 KB chunks<br/>IMAGE_PART ×N + IMAGE_JPEG"| NETWS
-        NETWS -->|"TTS audio — AUDIO_OUT<br/>Opus / ADPCM / PCM<br/>+ AUDIO_OUT_END"| SPK
-        NETWS -->|"STATE byte → page + LED<br/>LaTeX / text / graph /<br/>chem / doc frames"| TFTUI
-        TFTUI -->|"GRAPH_VIEW<br/>pan-zoom viewport"| NETWS
+        WAKE -.->|"trigger record"| DSP
+        DSP -->|"question audio"| NETWS
+        CAM -->|"photo chunks"| NETWS
+        BTN -->|"CANCEL"| NETWS
+        BTN -.->|"scroll"| TFTUI
+        NETWS -->|"TTS audio"| SPK
+        NETWS -->|"frames + STATE"| TFTUI
+        TFTUI -.->|"GRAPH_VIEW"| NETWS
         PROV -->|"pairing QR"| TFTUI
-        BTN["Buttons + RGB LED<br/>cancel turn, scroll pages,<br/>pan / zoom graphs"]
-        BTN -->|"CANCEL frame"| NETWS
-        BTN -->|"page scroll"| TFTUI
     end
 
     subgraph BE["FastAPI Backend — app/"]
@@ -102,9 +102,9 @@ flowchart LR
         SUPA["Supabase Postgres<br/>devices, sessions, turns,<br/>user_memory, user_profiles"]
     end
 
-    NETWS -->|"UPLINK — wss /lamp/ws<br/>auth: device_jwt<br/>audio / image / cancel frames"| WSL
-    SESS -->|"DOWNLINK — same WebSocket<br/>STATE / TTS audio / TFT frames<br/>back to the lamp"| NETWS
-    PROV -->|"HTTPS register /<br/>poll-pairing / OTA poll +<br/>firmware self-flash"| HTTPR
+    NETWS -->|"UPLINK — wss /lamp/ws<br/>auth: device_jwt"| WSL
+    SESS -->|"DOWNLINK — answer frames<br/>on the same WebSocket"| NETWS
+    PROV -->|"HTTPS — register / pairing /<br/>OTA self-update"| HTTPR
     LIBAPI -->|"HTTPS /api/*<br/>Clerk Bearer token"| HTTPR
     PAGES -->|"sign-in / sessions"| CLERK
     CLERK -->|"user.deleted webhook"| HTTPR
