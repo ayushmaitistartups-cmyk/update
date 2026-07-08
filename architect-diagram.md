@@ -57,7 +57,7 @@ flowchart TB
         ORCH <--> MEMN
         ORCH --> TTSN
         ORCH --> RENDN
-        ORCH --> TIER
+        ORCH <-->|"reply back<br/>to pipeline"| TIER
     end
 
     SUPA[("🗄️ Supabase Postgres<br/>devices · sessions · turns · turn_traces<br/>user_memory · user_profiles")]
@@ -102,7 +102,7 @@ flowchart TB
     MEMN <-->|"read context / write turns<br/>(writes fire-and-forget)"| SUPA
     MEMN <-->|"hot read +<br/>write-through"| REDIS
     SIM -.->|"turns tagged<br/>source=simulation"| SUPA
-    TIER -->|"multimodal LLM calls"| LLMS
+    TIER <-->|"multimodal LLM calls —<br/>JSON answer back"| LLMS
 ```
 
 **Key rule shown above:** the lamp never talks to Clerk — it only sees the backend's
