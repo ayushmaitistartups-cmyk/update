@@ -40,16 +40,16 @@ flowchart TB
     CLERK(["🔐 Clerk<br/>human identity / sessions"])
 
     subgraph BE["🧠 FastAPI Backend — the brain"]
-        WSE["Binary WebSocket endpoint<br/>(/lamp/ws, one per lamp)"]
+        WSE["1 — Binary WebSocket endpoint<br/>(/lamp/ws, one per lamp)"]
         AUTHP["Auth + pairing<br/>(device_jwt / device_secret)"]
         FMAPI["Frontend Manager API<br/>(profile, analytics, admin, insights)"]
-        PRE["Pre-router<br/>(image check, deterministic escalation)"]
-        ORCH["Turn orchestrator<br/>(guard stack, math verifier,<br/>problem memo)"]
+        PRE["2 — Pre-router<br/>(image check, deterministic escalation)"]
+        ORCH["3 — Turn orchestrator<br/>(guard stack, math verifier,<br/>problem memo)"]
         MEMN["Memory<br/>(L1 Redis / L2 compaction / L3 profile)"]
-        TTSN["TTS engine — Cartesia (active)<br/>Piper / Gemini fallback, 24 kHz"]
-        RENDN["Display renderers<br/>(LaTeX → RGB565, graphs,<br/>molecules, scroll-docs)"]
-        TIER["Tiered model selection<br/>(flash-lite → +thinking → pro-preview)"]
-        OUTS["Answer streamer — session.py<br/>(voice + visuals in parallel,<br/>paced ≤4 KB chunks)"]
+        TTSN["5a — TTS engine — Cartesia (active)<br/>Piper / Gemini fallback, 24 kHz"]
+        RENDN["5b — Display renderers<br/>(LaTeX → RGB565, graphs,<br/>molecules, scroll-docs)"]
+        TIER["4 — Tiered model selection<br/>(flash-lite → +thinking → pro-preview)"]
+        OUTS["6 — Answer streamer — session.py<br/>(voice + visuals in parallel,<br/>paced ≤4 KB chunks)"]
 
         WSE --> PRE
         PRE --> ORCH
@@ -188,8 +188,8 @@ sequenceDiagram
 - **Audio out:** 24 kHz mono, ≤4 KB chunks paced at 85 ms — wire codec is Opus
   by default (ADPCM / raw PCM fallbacks); `AUDIO_OUT_END` is mandatory, it
   releases the half-duplex I2S bus back to the mic so the wake word re-arms.
-- **Memory:** L1 verbatim recent turns (Redis→Supabase), L2 session-summary
-  compaction, L3 cross-session user profile — shared by the lamp and the web simulator.
+- **Memory:** L1 verbatim recent turns (Redis→Supabase), L2 session-summary(supabase)
+  compaction, L3 cross-session user profile(supabase) — shared by the lamp and the web simulator.
 - **Ingest gates:** up to 5 images per turn, each capped at 256 KB (an over-cap
   or excess image is dropped but the turn still runs); audio 0.5 s min / 30 s
   max (truncated over cap); a new AUDIO_END cancels and awaits any in-flight turn.
