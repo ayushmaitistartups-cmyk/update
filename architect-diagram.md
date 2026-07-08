@@ -31,7 +31,6 @@ flowchart TB
     end
 
     subgraph FE["🌐 Human-facing web — Next.js"]
-        SIM["Web simulator<br/>(browser stand-in for the lamp)"]
         DASH["Dashboard — home<br/>(profile glance, analytics cards)"]
         DEEP["Analytics / Devices / Admin<br/>(charts, manage lamps, turn traces)"]
         QRP["QR pairing<br/>(in-browser scanner)"]
@@ -47,9 +46,9 @@ flowchart TB
         PRE["Pre-router<br/>(image check, deterministic escalation)"]
         ORCH["Turn orchestrator<br/>(guard stack, math verifier,<br/>problem memo)"]
         MEMN["Memory<br/>(L1 Redis / L2 compaction / L3 profile)"]
-        TTSN["TTS engine<br/>(Piper / Gemini, 24 kHz)"]
+        TTSN["TTS engine — Cartesia (active)<br/>Piper / Gemini fallback, 24 kHz"]
         RENDN["Display renderers<br/>(LaTeX → RGB565, graphs,<br/>molecules, scroll-docs)"]
-        TIER["Tiered model selection<br/>(Flash → Flash-thinking → Pro)"]
+        TIER["Tiered model selection<br/>(flash-lite → +thinking → pro-preview)"]
         OUTS["Answer streamer — session.py<br/>(voice + visuals in parallel,<br/>paced ≤4 KB chunks)"]
 
         WSE --> PRE
@@ -63,11 +62,10 @@ flowchart TB
     SUPA[("🗄️ Supabase Postgres<br/>devices · sessions · turns · turn_traces<br/>user_memory · user_profiles")]
     REDIS[("⚡ Redis<br/>hot memory + revocation pub/sub")]
 
-    subgraph LLMS["🤖 LLM providers — swappable"]
-        GEMP["Gemini 2.5<br/>Flash / Pro"]
-        OAIP["OpenAI"]
-        CLAP["Claude"]
-        DSKP["DeepSeek"]
+    subgraph LLMS["🤖 LLM providers — swappable (LLM_PROVIDER=gemini)"]
+        GEMP["Gemini 3.1 — ACTIVE<br/>flash-lite (T1 / T2 +thinking)<br/>pro-preview (T3, code execution)"]
+        CLAP["Claude Sonnet 4.6<br/>timeout fallback<br/>(+ Groq Whisper for audio)"]
+        OTHP["OpenAI / DeepSeek<br/>adapters ready — no API key set"]
     end
 
     %% invisible links — keep the vertical order: web → lamp → backend
@@ -84,8 +82,6 @@ flowchart TB
     DASH <-->|"Clerk JWT on every call —<br/>profile + analytics JSON back"| FMAPI
     DEEP <--> FMAPI
     ONB -->|"profile save"| FMAPI
-    SIM <-->|"/solve — question up,<br/>answer back (text + KaTeX)"| FMAPI
-    FMAPI -->|"web turns — same pipeline"| ORCH
 
     %% identity
     DASH -->|"sign-in / sessions"| CLERK
@@ -101,7 +97,6 @@ flowchart TB
     FMAPI <-->|"profile / devices / turn stats<br/>(user-scoped reads + profile writes)"| SUPA
     MEMN <-->|"read context / write turns<br/>(writes fire-and-forget)"| SUPA
     MEMN <-->|"hot read +<br/>write-through"| REDIS
-    SIM -.->|"turns tagged<br/>source=simulation"| SUPA
     TIER <-->|"multimodal LLM calls —<br/>JSON answer back"| LLMS
 ```
 
