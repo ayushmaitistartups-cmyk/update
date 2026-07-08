@@ -15,13 +15,6 @@ System-level architecture across the three repos in this workspace:
 ```mermaid
 flowchart TB
 
-    subgraph FE["🌐 Human-facing web — Next.js"]
-        SIM["Web simulator<br/>(browser stand-in for the lamp)"]
-        DASH["Dashboard<br/>(analytics, admin, devices)"]
-        QRP["QR pairing<br/>(in-browser scanner)"]
-        ONB["Onboarding<br/>(learner profile)"]
-    end
-
     subgraph LAMP["💡 Smart Tutor Lamp — ESP32-S3 firmware"]
         BTN["Buttons<br/>(cancel / scroll / zoom)"]
         CAM["OV5640 camera<br/>(JPEG snapshot of the page)"]
@@ -37,6 +30,13 @@ flowchart TB
         FWO --> SPKN
     end
 
+    subgraph FE["🌐 Human-facing web — Next.js"]
+        SIM["Web simulator<br/>(browser stand-in for the lamp)"]
+        DASH["Dashboard<br/>(analytics, admin, devices)"]
+        QRP["QR pairing<br/>(in-browser scanner)"]
+        ONB["Onboarding<br/>(learner profile)"]
+    end
+
     CLERK(["🔐 Clerk<br/>human identity / sessions"])
 
     subgraph BE["🧠 FastAPI Backend — the brain"]
@@ -49,6 +49,7 @@ flowchart TB
         TTSN["TTS engine<br/>(Piper / Gemini, 24 kHz)"]
         RENDN["Display renderers<br/>(LaTeX → RGB565, graphs,<br/>molecules, scroll-docs)"]
         TIER["Tiered model selection<br/>(Flash → Flash-thinking → Pro)"]
+        OUTS["Answer streamer — session.py<br/>(voice + visuals in parallel,<br/>paced ≤4 KB chunks)"]
 
         WSE --> PRE
         PRE --> ORCH
@@ -73,19 +74,24 @@ flowchart TB
     ONB ~~~ MICD
 
     %% lamp ↔ backend
-    FWO <-->|"WSS — audio uplink (PCM/ADPCM) + JPEG /<br/>downlink: paced 24 kHz audio + TFT frames"| WSE
+    FWO -->|"WSS uplink — question audio<br/>(PCM/ADPCM) + JPEG"| WSE
+    OUTS -->|"WSS downlink — paced 24 kHz<br/>audio + TFT frames"| FWO
     FWO -->|"HTTPS — register → QR →<br/>pairing code → device_jwt"| AUTHP
 
     %% web ↔ backend
     QRP -->|"scan QR →<br/>complete pairing"| AUTHP
     DASH -->|"Clerk JWT<br/>on every call"| FMAPI
     ONB -->|"profile save"| FMAPI
-    SIM -->|"/solve HTTP + web WS —<br/>same brain, same protocol"| FMAPI
+    SIM <-->|"/solve — question up,<br/>answer back (text + KaTeX)"| FMAPI
     FMAPI -->|"web turns — same pipeline"| ORCH
 
     %% identity
     DASH -->|"sign-in / sessions"| CLERK
     CLERK -.->|"user.deleted webhook (Svix)"| AUTHP
+
+    %% answer out — dispatch to the asking surface
+    TTSN -->|"voice"| OUTS
+    RENDN -->|"visuals"| OUTS
 
     %% data + models
     MEMN <-->|"read context / write turns<br/>(writes fire-and-forget)"| SUPA
