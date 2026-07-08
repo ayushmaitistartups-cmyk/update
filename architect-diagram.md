@@ -31,8 +31,8 @@ flowchart TB
     end
 
     subgraph FE["🌐 Human-facing web — Next.js"]
-        DASH["Dashboard — home<br/>(profile glance,<br/>analytics cards)"]
-        DEEP["Analytics / Devices / Admin<br/>(charts, manage lamps,<br/>turn traces)"]
+        DASH["User-Dashboard<br/>(profile glance,<br/>analytics cards)"]
+        DEEP["Admin-Dashboard<br/>(charts, manage lamps,<br/>turn traces)"]
         QRP["QR pairing<br/>(in-browser scanner)"]
         ONB["Onboarding<br/>(learner profile)"]
     end
