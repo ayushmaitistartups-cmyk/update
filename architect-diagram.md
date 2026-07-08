@@ -45,7 +45,7 @@ flowchart TB
         FMAPI["Frontend Manager API<br/>(profile, analytics, admin, insights)"]
         PRE["2 — Pre-router<br/>(image check, deterministic escalation)"]
         ORCH["3 — Turn orchestrator<br/>(guard stack, math verifier,<br/>problem memo)"]
-        MEMN["Memory<br/>(L1 Redis / L2 compaction / L3 profile)"]
+        MEMN["Memory<br/>(L1 Redis / L2 compaction /<br/>L3 profile)"]
         TTSN["5a — TTS engine — Cartesia (active)<br/>Piper / Gemini fallback, 24 kHz"]
         RENDN["5b — Display renderers<br/>(LaTeX → RGB565, graphs,<br/>molecules, scroll-docs)"]
         TIER["4 — Tiered model selection<br/>(flash-lite → +thinking → pro-preview)"]
