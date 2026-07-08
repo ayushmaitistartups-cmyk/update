@@ -3,7 +3,7 @@
 System-level architecture across the three repos in this workspace:
 
 | Tier | Repo / path | Stack |
-|---|---|---|
+| --- | --- | --- |
 | Device firmware | `Smart-Tutor-Lamp/tutor_lamp/` | ESP32-S3, Arduino, FreeRTOS |
 | Cloud backend | `Smart-Tutor-Lamp-backend/app/` | Python, FastAPI, asyncio |
 | Web app | `Smart-Tutor-frontend/` | Next.js, Clerk |
@@ -88,8 +88,8 @@ flowchart TB
     CLERK -.->|"user.deleted webhook (Svix)"| AUTHP
 
     %% data + models
-    MEMN -->|"reads / writes<br/>(fire-and-forget)"| SUPA
-    MEMN --> REDIS
+    MEMN <-->|"read context / write turns<br/>(writes fire-and-forget)"| SUPA
+    MEMN <-->|"hot read +<br/>write-through"| REDIS
     SIM -.->|"turns tagged<br/>source=simulation"| SUPA
     TIER -->|"multimodal LLM calls"| LLMS
 ```
