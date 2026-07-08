@@ -77,7 +77,7 @@ flowchart TB
     %% lamp ↔ backend
     FWO -->|"WSS uplink — question audio<br/>(PCM/ADPCM) + JPEG"| WSE
     OUTS -->|"WSS downlink — paced 24 kHz<br/>audio + TFT frames"| FWO
-    FWO -->|"HTTPS — register → QR → device_jwt<br/>+ OTA poll / self-flash"| AUTHP
+    FWO -->|"HTTPS — register → QR →<br/>pairing code → device_jwt"| AUTHP
 
     %% web ↔ backend
     QRP -->|"scan QR →<br/>complete pairing"| AUTHP
@@ -90,7 +90,6 @@ flowchart TB
     %% identity
     DASH -->|"sign-in / sessions"| CLERK
     CLERK -.->|"user.deleted webhook (Svix)"| AUTHP
-    FMAPI -.->|"verify Clerk JWT"| CLERK
 
     %% answer out — dispatch to the asking surface
     TTSN -->|"voice"| OUTS
