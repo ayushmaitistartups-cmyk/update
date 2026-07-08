@@ -32,7 +32,8 @@ flowchart TB
 
     subgraph FE["🌐 Human-facing web — Next.js"]
         SIM["Web simulator<br/>(browser stand-in for the lamp)"]
-        DASH["Dashboard<br/>(analytics, admin, devices)"]
+        DASH["Dashboard — home<br/>(profile glance, analytics cards)"]
+        DEEP["Analytics / Devices / Admin<br/>(charts, manage lamps, turn traces)"]
         QRP["QR pairing<br/>(in-browser scanner)"]
         ONB["Onboarding<br/>(learner profile)"]
     end
@@ -80,7 +81,8 @@ flowchart TB
 
     %% web ↔ backend
     QRP -->|"scan QR →<br/>complete pairing"| AUTHP
-    DASH -->|"Clerk JWT<br/>on every call"| FMAPI
+    DASH <-->|"Clerk JWT on every call —<br/>profile + analytics JSON back"| FMAPI
+    DEEP <--> FMAPI
     ONB -->|"profile save"| FMAPI
     SIM <-->|"/solve — question up,<br/>answer back (text + KaTeX)"| FMAPI
     FMAPI -->|"web turns — same pipeline"| ORCH
@@ -94,6 +96,7 @@ flowchart TB
     RENDN -->|"visuals"| OUTS
 
     %% data + models
+    FMAPI <-->|"profile / devices / turn stats<br/>(user-scoped reads + profile writes)"| SUPA
     MEMN <-->|"read context / write turns<br/>(writes fire-and-forget)"| SUPA
     MEMN <-->|"hot read +<br/>write-through"| REDIS
     SIM -.->|"turns tagged<br/>source=simulation"| SUPA
