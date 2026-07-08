@@ -54,7 +54,7 @@ flowchart TB
 
         WSE --> PRE
         PRE --> ORCH
-        ORCH --> MEMN
+        ORCH <--> MEMN
         ORCH --> TTSN
         ORCH --> RENDN
         ORCH --> TIER
@@ -77,7 +77,7 @@ flowchart TB
     %% lamp ↔ backend
     FWO -->|"WSS uplink — question audio<br/>(PCM/ADPCM) + JPEG"| WSE
     OUTS -->|"WSS downlink — paced 24 kHz<br/>audio + TFT frames"| FWO
-    FWO -->|"HTTPS — register → QR →<br/>pairing code → device_jwt"| AUTHP
+    FWO -->|"HTTPS — register → QR → device_jwt<br/>+ OTA poll / self-flash"| AUTHP
 
     %% web ↔ backend
     QRP -->|"scan QR →<br/>complete pairing"| AUTHP
@@ -90,12 +90,15 @@ flowchart TB
     %% identity
     DASH -->|"sign-in / sessions"| CLERK
     CLERK -.->|"user.deleted webhook (Svix)"| AUTHP
+    FMAPI -.->|"verify Clerk JWT"| CLERK
 
     %% answer out — dispatch to the asking surface
     TTSN -->|"voice"| OUTS
     RENDN -->|"visuals"| OUTS
 
     %% data + models
+    AUTHP <-->|"devices +<br/>pairing codes"| SUPA
+    AUTHP -.->|"revocation publish<br/>→ WS close 4402"| REDIS
     FMAPI <-->|"profile / devices / turn stats<br/>(user-scoped reads + profile writes)"| SUPA
     MEMN <-->|"read context / write turns<br/>(writes fire-and-forget)"| SUPA
     MEMN <-->|"hot read +<br/>write-through"| REDIS
