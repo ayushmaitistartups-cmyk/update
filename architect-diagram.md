@@ -13,108 +13,85 @@ System-level architecture across the three repos in this workspace:
 ## 1. System overview
 
 ```mermaid
-flowchart LR
+flowchart TB
 
-    subgraph LAMP["ESP32-S3 Lamp — tutor_lamp firmware"]
-        MIC["INMP441 mic<br/>I2S RX 16 kHz"]
-        CAM["OV5640 camera<br/>SVGA JPEG 25–40 KB"]
-        BTN["Buttons + RGB LED<br/>cancel turn, scroll pages,<br/>pan / zoom graphs"]
-        DSP["DSP chain<br/>NS → ALE → AGC → VAD"]
-        WAKE["Edge Impulse wake word<br/>hey Lumos"]
-        NETWS["net_ws — persistent WSS client<br/>type-byte binary protocol, ≤4 KB msgs<br/>up: AUDIO_CHUNK / IMAGE_PART / CANCEL<br/>down: STATE / AUDIO_OUT / TFT frames"]
-        PROV["provisioning<br/>device_jwt in NVS"]
-        SPK["MAX98357A speaker<br/>24 kHz PCM, half-duplex I2S"]
-        TFTUI["tft_ui — 240×320 TFT<br/>pages, LaTeX frames, QR"]
-
-        MIC --> DSP
-        DSP --> WAKE
-        WAKE -.->|"trigger record"| DSP
-        DSP -->|"question audio"| NETWS
-        CAM -->|"photo chunks"| NETWS
-        BTN -->|"CANCEL"| NETWS
-        BTN -.->|"scroll"| TFTUI
-        NETWS -->|"TTS audio"| SPK
-        NETWS -->|"frames + STATE"| TFTUI
-        TFTUI -.->|"GRAPH_VIEW"| NETWS
-        PROV -->|"pairing QR"| TFTUI
+    subgraph FE["🌐 Human-facing web — Next.js"]
+        SIM["Web simulator<br/>(browser stand-in for the lamp)"]
+        DASH["Dashboard<br/>(analytics, admin, devices)"]
+        QRP["QR pairing<br/>(in-browser scanner)"]
+        ONB["Onboarding<br/>(learner profile)"]
     end
 
-    subgraph BE["FastAPI Backend — app/"]
-        WSL["routes/ws_lamp.py<br/>WS endpoint /lamp/ws"]
-        SESS["session.py<br/>audio + image accumulators,<br/>paced chunk senders"]
+    subgraph LAMP["💡 Smart Tutor Lamp — ESP32-S3 firmware"]
+        BTN["Buttons<br/>(cancel / scroll / zoom)"]
+        CAM["OV5640 camera<br/>(JPEG snapshot of the page)"]
+        MICD["INMP441 mic + on-device DSP<br/>(wake word, NS, ALE, AGC, VAD)"]
+        FWO["Firmware orchestrator<br/>(state machine + net_ws,<br/>ADPCM codec)"]
+        TFTN["240×320 TFT<br/>(text / LaTeX / graphs / images)"]
+        SPKN["MAX98357A speaker<br/>(24 kHz, half-duplex I2S)"]
 
-        PRER["1 — escalation_router<br/>image-quality retake check,<br/>deterministic starting tier"]
-        GUARD["2 — input_guard<br/>distress / harm /<br/>prompt-injection screen"]
-        ORCH["3 — orchestrator — TurnOrchestrator<br/>+ problem_memo (solve once, tutor many)<br/>+ session memory into prompt<br/>+ 2-tier escalation"]
-        LLMP["4 — providers/llm_* (Gemini default)<br/>audio + image + prompt → JSON"]
-        MATHV["5 — math_verifier<br/>recompute answer (numpy),<br/>balance chemistry"]
-        OUTV["6 — output_validator + render_check<br/>PASS / REPAIR / REPLACE gate"]
-        DISP["7 — dispatch<br/>audio leg + display legs<br/>run concurrently (asyncio.gather)"]
-
-        PRER --> GUARD
-        GUARD --> ORCH
-        ORCH --> LLMP
-        LLMP --> MATHV
-        MATHV --> OUTV
-        OUTV --> DISP
-
-        MEMS["services/session_memory.py<br/>L1 recent / L2 summary / L3 profile"]
-        TTSP["tts_piper<br/>speech → 24 kHz PCM"]
-        LTX["latex_renderer<br/>LaTeX → RGB565 frames"]
-        GRPH["graph_renderer<br/>function plots → JPEG"]
-        CHEM["rdkit_renderer<br/>molecule steps → JPEG"]
-        DOCP["document composer<br/>scroll-doc manifest + blocks"]
-        TRACE["turn_trace — passive observer<br/>→ turn_traces (admin pipeline audit)"]
-        WORKERS["offline workers (never on live path)<br/>topic_tagger, mistake_tagger,<br/>transcribe, embed, rollup"]
-        HTTPR["HTTP routes<br/>device_*, pairing_info, ota,<br/>frontend_manager, admin, pilot, insights"]
-        AUTHD["deps/clerk + device_jwt<br/>token verification"]
-
-        WSL --> SESS
-        SESS -->|"complete turn:<br/>WAV + JPEG"| PRER
-        ORCH <-->|"load_context / record_turn"| MEMS
-        DISP --> TTSP
-        DISP --> LTX
-        DISP --> GRPH
-        DISP --> CHEM
-        DISP --> DOCP
-        DISP -->|"stream frames"| SESS
-        SESS -->|"GRAPH_VIEW → re-render<br/>cached graph spec, no LLM"| GRPH
-        ORCH -.->|"every pipeline phase timed"| TRACE
-        HTTPR --> AUTHD
-        AUTHD -.->|"gates /lamp/ws"| WSL
+        BTN --> FWO
+        CAM --> FWO
+        MICD --> FWO
+        FWO --> TFTN
+        FWO --> SPKN
     end
 
-    subgraph FE["Next.js Frontend"]
-        PAGES["dashboard / devices /<br/>analytics / admin"]
-        CONNECT["connect page — QR scanner<br/>→ pair confirm"]
-        SIM["simulator — web bench<br/>mic + webcam, same brain"]
-        LIBAPI["lib/api.ts<br/>Clerk-Bearer fetch"]
+    CLERK(["🔐 Clerk<br/>human identity / sessions"])
 
-        PAGES --> LIBAPI
-        CONNECT --> LIBAPI
-        SIM --> LIBAPI
+    subgraph BE["🧠 FastAPI Backend — the brain"]
+        WSE["Binary WebSocket endpoint<br/>(/lamp/ws, one per lamp)"]
+        AUTHP["Auth + pairing<br/>(device_jwt / device_secret)"]
+        FMAPI["Frontend Manager API<br/>(profile, analytics, admin, insights)"]
+        PRE["Pre-router<br/>(image check, deterministic escalation)"]
+        ORCH["Turn orchestrator<br/>(guard stack, math verifier,<br/>problem memo)"]
+        MEMN["Memory<br/>(L1 Redis / L2 compaction / L3 profile)"]
+        TTSN["TTS engine<br/>(Piper / Gemini, 24 kHz)"]
+        RENDN["Display renderers<br/>(LaTeX → RGB565, graphs,<br/>molecules, scroll-docs)"]
+        TIER["Tiered model selection<br/>(Flash → Flash-thinking → Pro)"]
+
+        WSE --> PRE
+        PRE --> ORCH
+        ORCH --> MEMN
+        ORCH --> TTSN
+        ORCH --> RENDN
+        ORCH --> TIER
     end
 
-    %% External services — free-standing so each sits near its callers
-    GEM(["Google Gemini API<br/>multimodal LLM"])
-    CLERK(["Clerk<br/>human identity"])
-    REDIS[("Redis<br/>hot memory +<br/>revocation pub/sub")]
-    SUPA[("Supabase Postgres<br/>devices, sessions, turns,<br/>user_memory, user_profiles")]
+    SUPA[("🗄️ Supabase Postgres<br/>devices · sessions · turns · turn_traces<br/>user_memory · user_profiles")]
+    REDIS[("⚡ Redis<br/>hot memory + revocation pub/sub")]
 
-    NETWS -->|"UPLINK — wss /lamp/ws<br/>auth: device_jwt"| WSL
-    SESS -->|"DOWNLINK — answer frames<br/>on the same WebSocket"| NETWS
-    PROV -->|"HTTPS — register / pairing /<br/>OTA self-update"| HTTPR
-    LIBAPI -->|"HTTPS /api/*<br/>Clerk Bearer token"| HTTPR
-    PAGES -->|"sign-in / sessions"| CLERK
-    CLERK -->|"user.deleted webhook"| HTTPR
-    LLMP --> GEM
-    MEMS --> REDIS
-    MEMS --> SUPA
-    TRACE --> SUPA
-    WORKERS --> SUPA
-    WORKERS -.->|"cheap tagging calls"| GEM
-    HTTPR --> SUPA
-    AUTHD -->|"verify Clerk JWT"| CLERK
+    subgraph LLMS["🤖 LLM providers — swappable"]
+        GEMP["Gemini 2.5<br/>Flash / Pro"]
+        OAIP["OpenAI"]
+        CLAP["Claude"]
+        DSKP["DeepSeek"]
+    end
+
+    %% invisible links — keep the vertical order: web → lamp → backend
+    QRP ~~~ CAM
+    ONB ~~~ MICD
+
+    %% lamp ↔ backend
+    FWO <-->|"WSS — audio uplink (PCM/ADPCM) + JPEG /<br/>downlink: paced 24 kHz audio + TFT frames"| WSE
+    FWO -->|"HTTPS — register → QR →<br/>pairing code → device_jwt"| AUTHP
+
+    %% web ↔ backend
+    QRP -->|"scan QR →<br/>complete pairing"| AUTHP
+    DASH -->|"Clerk JWT<br/>on every call"| FMAPI
+    ONB -->|"profile save"| FMAPI
+    SIM -->|"/solve HTTP + web WS —<br/>same brain, same protocol"| FMAPI
+    FMAPI -->|"web turns — same pipeline"| ORCH
+
+    %% identity
+    DASH -->|"sign-in / sessions"| CLERK
+    CLERK -.->|"user.deleted webhook (Svix)"| AUTHP
+
+    %% data + models
+    MEMN -->|"reads / writes<br/>(fire-and-forget)"| SUPA
+    MEMN --> REDIS
+    SIM -.->|"turns tagged<br/>source=simulation"| SUPA
+    TIER -->|"multimodal LLM calls"| LLMS
 ```
 
 **Key rule shown above:** the lamp never talks to Clerk — it only sees the backend's
